@@ -6,7 +6,7 @@ class Model(nn.Module):
         super(Model, self).__init__()
 
         self.conv_layers = nn.Sequential(
-            nn.Conv2d(3, 32, kernel_size=8, stride=4),
+            nn.Conv2d(4, 32, kernel_size=8, stride=4),
             nn.ReLU(),
             nn.Conv2d(32, 64, kernel_size=4, stride=2),
             nn.ReLU(),
@@ -16,7 +16,7 @@ class Model(nn.Module):
 
         self.flatten = nn.Flatten()
 
-        self.dummy_input = torch.zeros(1, 3, 84, 84)
+        self.dummy_input = torch.zeros(1, 4, 84, 84)
         with torch.no_grad():
             conv_out_size = self.conv_layers(self.dummy_input).view(1, -1).size(1) 
 
