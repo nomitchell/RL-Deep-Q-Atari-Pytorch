@@ -1,0 +1,17 @@
+{
+    "seed": 42,
+    "gamma": 0.99,
+    "epsilon": 1.0,
+    "epsilon_min": 0.1,
+    "epsilon_max": 1.0,
+    "batch_size": 32,
+    "max_steps_per_episode": 10000,
+    "max_episodes": 100000,
+    "num_actions": 4,
+    "epsilon_random_frames": 50000,
+    "epsilon_greedy_frames": 1000000.0,
+    "max_memory_length": 500000,
+    "update_after_actions": 4,
+    "update_target_network": 10000,
+    "learning_rate": 0.00025
+}

@@ -16,6 +16,7 @@ class Model(nn.Module):
 
         self.flatten = nn.Flatten()
 
+        # Auto determine input size
         self.dummy_input = torch.zeros(1, 4, 84, 84)
         with torch.no_grad():
             conv_out_size = self.conv_layers(self.dummy_input).view(1, -1).size(1) 

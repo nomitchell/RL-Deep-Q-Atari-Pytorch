@@ -1,160 +1,113 @@
 import gymnasium as gym
-from gymnasium.wrappers import AtariPreprocessing, FrameStackObservation
 import ale_py
-from model import Model
+from gymnasium.wrappers import AtariPreprocessing, FrameStackObservation
 import torch
-import torch.nn as nn
-from torch.nn import functional as F
-import torch.optim as optim
 import numpy as np
+from model import Model  # Assuming model.py contains your Model class
 
-config = {
-    "seed": 42,
-    "gamma": 0.99,
-    "epsilon": 1.0,
-    "epsilon_min": 0.1,
-    "epsilon_max": 1.0,
-    "batch_size": 32,
-    "max_steps_per_episode": 10000,
-    "max_episodes": 10000,
-    "render_mode": None,
-    "num_actions": 4,
-    "epsilon_random_frames": 50000,
-    "epsilon_greedy_frames": 1000000.0,
-    "max_memory_length": 100000,
-    "update_after_actions": 4,
-    "update_target_network": 10000
+games = 5
 
-}
+def test_agent():
+    """
+    Tests a trained Deep Q-Network agent on Atari Breakout.
+    Loads a model from 'model.pth' and runs it in the Breakout environment with human rendering.
+    Includes debugging print statements to help identify issues.
+    """
 
-gym.register_envs(ale_py)
+    print("Starting agent testing...")
 
-env = gym.make("ALE/Breakout-v5", render_mode=config["render_mode"], frameskip=1)
-env = AtariPreprocessing(env)
-env = FrameStackObservation(env, 4)
+    # 1. Initialize Environment
+    env_name = "ALE/Breakout-v5"  # Or "BreakoutNoFrameskip-v4" if you trained on that
+    try:
+        env = gym.make(env_name, render_mode="human", frameskip=1)
+        env = AtariPreprocessing(env)
+        env = FrameStackObservation(env, 4)
+        print(f"Successfully initialized environment: {env_name}")
+    except Exception as e:
+        print(f"Error initializing environment {env_name}: {e}")
+        return
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # 2. Set Device (CUDA if available, otherwise CPU)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Using device: {device}")
 
-model = Model().to(device)
-target_model = Model().to(device)
+    # 3. Instantiate and Load Model
+    try:
+        model = Model().to(device)  # Create an instance of your Model class
+        model.load_state_dict(torch.load("model.pth", map_location=device)) # Load saved weights
+        model.eval()  # Set model to evaluation mode (important for inference)
+        print("Successfully loaded model weights from 'model.pth'")
+    except FileNotFoundError:
+        print("Error: 'model.pth' not found. Make sure the model file is in the correct directory.")
+        env.close()
+        return
+    except Exception as e:
+        print(f"Error loading model: {e}")
+        env.close()
+        return
 
-optimizer = optim.Adam(model.parameters(), lr=0.00025)
-loss_function = nn.HuberLoss()
+    # 4. Reset Environment and Initialize Variables
+    observation, _ = env.reset()
+    print("Initial observation shape:", np.array(observation).shape) # Check initial observation shape
 
-# Experience replay buffers
-action_history = []
-state_history = []
-state_next_history = []
-rewards_history = []
-done_history = []
-episode_reward_history = []
-running_reward = 0
-episode_count = 0
-frame_count = 0
-epsilon = config["epsilon"]
+    done = False
+    total_reward = 0
+    frame_count = 0
 
-# Reset the environment to generate the first observation
-while True:
-    observation, _ = env.reset(seed=config["seed"])
-    state = np.array(observation)
-    episode_reward = 0
+    # 5. Game Loop
+    for _ in range(games):
+        observation, _ = env.reset()
+        done = False
+        total_reward = 0
+        frame_count = 0
 
-    for t in range(1, config["max_steps_per_episode"]):
-        frame_count += 1
+        # may be needed in initial stages
+        # observation, reward, done, _, _ = env.step(1)
+        while not done:
+            frame_count += 1
 
-        if frame_count < config["epsilon_random_frames"] or epsilon > np.random.rand(1)[0]:
-            action = np.random.choice(config["num_actions"])
-        else:
-            state_tensor = torch.tensor(state, dtype=torch.float32).to(device)
-            state_tensor = state_tensor.unsqueeze(0)
+            # a. Preprocess State (Normalize and Convert to Tensor)
+            state = np.array(observation, dtype=np.float32)
+            state_tensor = torch.tensor(state, dtype=torch.float32, device=device).unsqueeze(0) # To tensor, add batch dim
 
-            model.eval()
-            with torch.no_grad():
-                action_probs = model(state_tensor)
+            # b. Agent's Action Selection (Inference)
+            with torch.no_grad(): # Disable gradient calculation for inference
+                action_probs = model(state_tensor) # Forward pass through the model
+                action = torch.argmax(action_probs, dim=1).item() # Choose action with highest Q-value
 
-            action = torch.argmax(action_probs[0]).item()
-
-        epsilon -= epsilon / config["epsilon_greedy_frames"]
-        epsilon = max(epsilon, config["epsilon_min"])
-
-        state_next, reward, done, _, _ = env.step(action)
-        state_next = np.array(state_next)
-
-        episode_reward += reward
-
-        action_history.append(action)
-        state_history.append(state)
-        state_next_history.append(state_next)
-        done_history.append(done)
-        rewards_history.append(reward)
-        state = state_next
-
-        if frame_count % config["update_after_actions"] == 0 and len(done_history) > config["batch_size"]:
-            model.train()
-
-            indices = np.random.choice(range(len(done_history)), size=config["batch_size"])
-
-            state_sample = np.array([state_history[i] for i in indices])
-            state_next_sample = np.array([state_next_history[i] for i in indices])
-            # Convert state_sample and state_next_sample to torch tensors
-            state_sample = torch.tensor(state_sample, dtype=torch.float32).to(device)
-            state_next_sample = torch.tensor(state_next_sample, dtype=torch.float32).to(device)
+            # Debug Print Statements (Uncomment for detailed debugging)
+            #print(f"Frame: {frame_count}, State shape: {state.shape}, Tensor shape: {state_tensor.shape}")
+            #print(f"Action Probabilities: {action_probs}")
+            #print(f"Selected Action: {action}")
 
 
-            rewards_sample = [rewards_history[i] for i in indices]
-            rewards_sample = torch.tensor(rewards_sample, dtype=torch.float32).to(device)
+            # c. Validate Action (Sanity Check - should rarely trigger if model output is correct)
+            if action >= env.action_space.n:
+                print(f"WARNING: Invalid action detected! Action: {action}, Action Space Size: {env.action_space.n}")
+                print("This indicates a potential issue with your model's output layer or action selection.")
+                break # Exit loop if invalid action to prevent errors
 
-            action_sample = [action_history[i] for i in indices]
-            action_sample = torch.tensor(action_sample, dtype=torch.long).to(device)
+            # d. Take Action in Environment
+            try:
+                observation, reward, done, _, _ = env.step(action)
+                total_reward += reward
+                # print(f"Frame: {frame_count}, Action: {action}, Reward: {reward}, Total Reward: {total_reward}, Done: {done}") # Optional reward tracking per frame
 
-            done_sample = torch.tensor([float(done_history[i]) for i in indices]).to(device)
+            except Exception as env_step_error:
+                print(f"Error during env.step(action): {env_step_error}")
+                print(f"Action that caused the error: {action}")
+                break # Exit loop if environment step fails
 
-            future_rewards = target_model(state_next_sample)
-            updated_q_values = rewards_sample + config["gamma"] * torch.amax(future_rewards, dim=1)
 
-            updated_q_values = updated_q_values *  (1 - done_sample) - done_sample
+            if done:
+                print(f"\nEpisode finished after {frame_count} frames.")
+                print(f"Total episode reward: {total_reward}")
 
-            masks = F.one_hot(action_sample, config["num_actions"])
 
-            q_values = model(state_sample)
-            q_action = torch.sum(torch.multiply(q_values, masks), dim=1)
-            loss = loss_function(updated_q_values, q_action)
+    # 6. Close Environment
+    env.close()
+    print("Environment closed.")
+    print("Testing complete.")
 
-            loss.backward()
-            optimizer.step()
-        
-        if frame_count % config["update_target_network"] == 0:
-            target_model.load_state_dict(model.state_dict())
-            print(f"Running reward {running_reward} at episode {episode_count}, frame count {frame_count}")
-            
-            torch.save(model.state_dict(), 'model.pth')
-            torch.save(target_model.state_dict(), 'target_model.pth')
-
-        if len(rewards_history) > config["max_memory_length"]:
-            del rewards_history[:1]
-            del state_history[:1]
-            del state_next_history[:1]
-            del action_history[:1]
-            del done_history[:1]
-
-        if done:
-            break
-    
-    episode_reward_history.append(episode_reward)
-    if len(episode_reward_history) > 100:
-        del episode_reward_history[:1]
-    running_reward = np.mean(episode_reward_history)
-
-    episode_count += 1
-
-    if running_reward > 40:
-        print(f"Solved at episode {episode_count}")
-        break
-
-    if (
-        config["max_episodes"] > 0 and episode_count >= config["max_episodes"] 
-    ):  # Maximum number of episodes reached
-        print("Stopped at episode {}!".format(episode_count))
-        break
-
-env.close()
+if __name__ == "__main__":
+    test_agent()
