@@ -2,7 +2,7 @@
 
 This repository implements a Deep Q-Network (DQN) agent in **PyTorch** to play Atari Breakout.
 
-![Breakout DQN Agent Example](about:sanitized) \#\# Project Description
+## Project Description
 
 The agent learns to play directly from pixel input using the DQN algorithm.
 
