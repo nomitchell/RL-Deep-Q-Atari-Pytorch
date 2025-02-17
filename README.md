@@ -1,4 +1,5 @@
 # DQN Atari Breakout in PyTorch
+![breakout](https://github.com/user-attachments/assets/68f0fe37-9b6a-4fe7-8062-0e962deadad8)
 
 This repository implements a Deep Q-Network (DQN) agent in **PyTorch** to play Atari Breakout.
 
